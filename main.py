@@ -37,7 +37,7 @@ def main1():
 def main():
 
     # classifier parameters
-    num_in_training_set = 40000
+    num_in_training_set = 10000
     num_in_testing_set = 2000
     small_classifier = DictionaryClassifier(
             28*28, # vector size

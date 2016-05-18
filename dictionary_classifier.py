@@ -1,6 +1,6 @@
 
 import numpy
-from compressed_sensing import orthogonal_matching_pursuit
+from compressed_sensing import orthogonal_matching_pursuit, stagewise_orthogonal_matching_pursuit
 
 import pdb
 from math import sqrt
@@ -79,11 +79,12 @@ class DictionaryClassifier:
         if self._dictionary is None:
             self.create_dictionary()
 
-        solution = orthogonal_matching_pursuit(
+        solution = stagewise_orthogonal_matching_pursuit(
                 self._dictionary, 
                 new_vector, 
                 max_iterations=self._max_ortho_iterations, 
-                threshold=self._ortho_matching_pursuit_threshold)
+                threshold=self._ortho_matching_pursuit_threshold,
+                vecs_per_stage=3)
 
         return solution
 

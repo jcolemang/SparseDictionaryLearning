@@ -99,6 +99,58 @@ def orthogonal_matching_pursuit( sensing_matrix, target, max_iterations=10, thre
     return estimation
 
 
+def stagewise_orthogonal_matching_pursuit( sensing_matrix, target, max_iterations=10, threshold=0.1, vecs_per_stage=2):
+    """
+    http://sparselab.stanford.edu/SparseLab_files/local_files/StOMP.pdf
+
+    TODO implement the method given in the paper.
+    """
+
+    size = sensing_matrix.shape
+    rows = size[0]
+    columns = size[1]
+    indices = []
+    residual = target 
+    residual_norm = la.norm(residual)
+
+    for i in range(max_iterations):
+
+        # reseting the estimation
+        estimation = numpy.zeros(columns)
+        
+        # getting the index of the max dot product
+        dot_products = numpy.absolute(numpy.dot(sensing_matrix.T, residual))
+#        dot_products = numpy.dot(sensing_matrix.T, residual)
+
+#        print('\n\nA bunch of fun stuff')
+#        for j in range(len(dot_products)):
+#            print(dot_products[j])
+
+        for j in range(vecs_per_stage):
+            max_index = dot_products.argmax()
+            if not max_index in indices:
+                indices.append(max_index)
+            dot_products[max_index] = 0
+
+        # finding least squares solution
+        significant_columns = sensing_matrix[:, indices]
+        least_squares = numpy.dot(la.pinv(significant_columns), target)
+
+        # updating the estimation
+        for idx in range(len(least_squares)):
+            estimation[indices[idx]] = least_squares[idx]
+
+        # updating and checking the residual
+        prev_residual_norm = residual_norm
+        residual = target - numpy.dot(sensing_matrix, estimation)
+        residual_norm = la.norm(residual)
+
+        if residual_norm < threshold or abs(residual_norm - prev_residual_norm) < 0.001:
+            break
+
+    return estimation
+
+
 def sparsity_of_vector(vec, threshold=0.000001):
     s = 0
     for i in range(vec.size):

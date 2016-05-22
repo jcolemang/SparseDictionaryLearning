@@ -1,11 +1,12 @@
 
 import numpy
-from compressed_sensing import orthogonal_matching_pursuit, stagewise_orthogonal_matching_pursuit
+from compressed_sensing import orthogonal_matching_pursuit, stagewise_orthogonal_matching_pursuit, normalize
 
 import pdb
 from math import sqrt
 
 import time
+import random
 
 
 class DictionaryClassifier:
@@ -16,20 +17,29 @@ class DictionaryClassifier:
     @author Coleman Gibson 
     """
 
-    def __init__(self, vector_length, use_all_data=False, svd_threshold=1000, pursuit_threshold=0, max_pursuit_iterations=None):
+    def __init__(
+            self, 
+            vector_length=None, 
+            use_all_data=False, 
+            svd_threshold=0, 
+            pursuit_accuracy_threshold=5, 
+            max_pursuit_iterations=None,
+            pursuit_improvement_threshold=0.0):
+
+        if vector_length == None:
+            raise ValueError('Must give vector_length parameter')
+
+        self._vector_length = vector_length
         self._classes = {}
         self._vector_length = vector_length
         self._dictionary = None
         self._class_range = {}
         self._shrink = not use_all_data
         self._svd_threshold = svd_threshold
-        self._ortho_matching_pursuit_threshold = pursuit_threshold
+        self._ortho_matching_pursuit_accuracy_threshold = pursuit_accuracy_threshold
         self._max_class_size = 0
-
-        if max_pursuit_iterations == None:
-            self._max_ortho_iterations = len(self._classes)
-        else:
-            self._max_ortho_iterations = max_pursuit_iterations
+        self._max_ortho_iterations = max_pursuit_iterations
+        self._pursuit_improvement_threshold = pursuit_improvement_threshold
 
 
     def add_class(self, class_name):
@@ -64,7 +74,20 @@ class DictionaryClassifier:
         if self._shrink:
             print('Shrinking')
             self._shrink_classes()
+        print('Creating dictionary')
         self._base_dictionary()
+
+        normalize(self._dictionary)
+
+
+    def get_sample_vector(self, class_name):
+        if self._dictionary == None:
+            self.create_dictionary()
+        return self._classes[class_name][random.randint(0, len(self._classes[class_name]))]
+
+
+    def dictionary_shape(self):
+        return self._dictionary.shape
 
 
     def find_sparse_solution_to(self, new_vector):
@@ -79,12 +102,19 @@ class DictionaryClassifier:
         if self._dictionary is None:
             self.create_dictionary()
 
-        solution = stagewise_orthogonal_matching_pursuit(
+        # extremely slow but will result in the
+        # best classification
+        if self._max_ortho_iterations == None:
+            max_iterations = self._max_class_size
+        else:
+            max_iterations = self._max_ortho_iterations
+
+        solution = orthogonal_matching_pursuit(
                 self._dictionary, 
                 new_vector, 
-                max_iterations=self._max_ortho_iterations, 
-                threshold=self._ortho_matching_pursuit_threshold,
-                vecs_per_stage=3)
+                max_iterations=max_iterations, 
+                residual_threshold=self._ortho_matching_pursuit_accuracy_threshold,
+                improvement_threshold=self._pursuit_improvement_threshold)
 
         return solution
 
@@ -132,12 +162,14 @@ class DictionaryClassifier:
             for v in self._classes[key]:
                 vectors.append(v)
                 self._class_range[key][1] = len(vectors) - 1
+
+        if len(vectors) == 0:
+            raise RuntimeError('Need more data or smaller SVD threshold')
+
         self._dictionary = self._to_array(vectors) 
 
         for i in range(self._dictionary.shape[1]):
             self._dictionary[:,i] /= numpy.linalg.norm(self._dictionary[:,i]) 
-
-        print(self._dictionary.shape)
 
 
     def _shrink_classes(self):
@@ -148,7 +180,11 @@ class DictionaryClassifier:
         """
 
         for class_name in self._classes:
+            print('Shrinking class: {0}'.format(class_name))
+
             class_array = self._to_array(self._classes[class_name])
+            print('Original size: {0}'.format(len(self._classes[class_name])))
+
             U, singular_values, Vt = numpy.linalg.svd(class_array, full_matrices=True)
             S = numpy.diag(singular_values)
             num_to_keep = 0
@@ -167,6 +203,7 @@ class DictionaryClassifier:
             for i in range(num_to_keep):
                 to_keep.append(result[i])
             self._classes[class_name] = to_keep 
+            print('New size: {0}'.format(len(self._classes[class_name])))
 
 
     def _vector_is_valid(self, vector):

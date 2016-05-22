@@ -11,6 +11,11 @@ import random
 import time
 
 
+def normalize(A):
+    for i in range(A.shape[1]):
+        A[:,i] /= la.norm(A[:,i]) 
+
+
 def coherence(A):
     for i in range(A.shape[1]):
         A[:,i] /= la.norm(A[:,i]) 
@@ -34,7 +39,7 @@ def matching_pursuit( sensing_matrix, target, max_iterations=10, threshold=0.1 )
     rows = size[0]
     columns = size[1]
 
-    # normalizing columns just cuz
+    # normalizing columns
     for i in range(columns):
         sensing_matrix[:,i] /= la.norm(sensing_matrix[:,i]) 
         
@@ -61,7 +66,12 @@ def matching_pursuit( sensing_matrix, target, max_iterations=10, threshold=0.1 )
     return approximation 
 
 
-def orthogonal_matching_pursuit( sensing_matrix, target, max_iterations=10, threshold=0.1 ):
+def orthogonal_matching_pursuit( 
+        sensing_matrix, 
+        target, 
+        max_iterations=10, 
+        residual_threshold=0.1,
+        improvement_threshold=0.001):
 
     size = sensing_matrix.shape
     rows = size[0]
@@ -72,17 +82,25 @@ def orthogonal_matching_pursuit( sensing_matrix, target, max_iterations=10, thre
 
     for i in range(max_iterations):
 
-        # reseting the estimation
-        estimation = numpy.zeros(columns)
         
         # getting the index of the max dot product
         dot_products = numpy.dot(sensing_matrix.T, residual)
-        max_index = dot_products.argmax()
-        indices.append(max_index)
+
+        max_index = numpy.absolute(dot_products).argmax()
+
+        # I dont think this should be necessary
+        if not max_index in indices:
+            indices.append(max_index)
+        else:
+            # Choosing the same index cannot improve on our estimation
+            break
 
         # finding least squares solution
         significant_columns = sensing_matrix[:, indices]
         least_squares = numpy.dot(la.pinv(significant_columns), target)
+
+        # reseting the estimation
+        estimation = numpy.zeros(columns)
 
         # updating the estimation
         for idx in range(len(least_squares)):
@@ -93,13 +111,19 @@ def orthogonal_matching_pursuit( sensing_matrix, target, max_iterations=10, thre
         residual = target - numpy.dot(sensing_matrix, estimation)
         residual_norm = la.norm(residual)
 
-        if residual_norm < threshold or abs(residual_norm - prev_residual_norm) < 0.001:
+        if residual_norm < residual_threshold or \
+                abs(prev_residual_norm / residual_norm) - 1 < improvement_threshold:
             break
 
     return estimation
 
 
-def stagewise_orthogonal_matching_pursuit( sensing_matrix, target, max_iterations=10, threshold=0.1, vecs_per_stage=2):
+def stagewise_orthogonal_matching_pursuit( 
+        sensing_matrix, 
+        target, 
+        max_iterations=10, 
+        threshold=0.1, 
+        vecs_per_stage=2):
     """
     http://sparselab.stanford.edu/SparseLab_files/local_files/StOMP.pdf
 
@@ -145,7 +169,7 @@ def stagewise_orthogonal_matching_pursuit( sensing_matrix, target, max_iteration
         residual = target - numpy.dot(sensing_matrix, estimation)
         residual_norm = la.norm(residual)
 
-        if residual_norm < threshold or abs(residual_norm - prev_residual_norm) < 0.001:
+        if residual_norm < threshold or abs(residual_norm - prev_residual_norm) < 0.0001:
             break
 
     return estimation
@@ -186,29 +210,60 @@ def main():
 
     # my test
     # sensing matrix
-    print('Generating matrix')
-    measurements = 500
-    unknowns = 10000
-    sparsity = 5 
-    A = numpy.random.randn( measurements, unknowns )
+#    print('Generating matrix')
+#    measurements = 500
+#    unknowns = 10000
+#    sparsity = 5 
+#    A = numpy.random.randn( measurements, unknowns )
 
-    print('Normalizing columns')
-    for i in range(A.shape[1]):
-        A[:,i] /= la.norm(A[:,i]) 
+#    print('Normalizing columns')
+#    for i in range(A.shape[1]):
+#        A[:,i] /= la.norm(A[:,i]) 
+#
+#    print('Coherence: {0}'.format(coherence(A)))
 
-    print('Coherence: {0}'.format(coherence(A)))
-
-    print('Creating sparse solution')
-    x = numpy.zeros(unknowns)
-    for i in range(sparsity):
-        x[random.randint(0, unknowns)] = random.randint(0, 100)
+#    print('Creating sparse solution')
+#    x = numpy.zeros(unknowns)
+#    for i in range(sparsity):
+#        x[random.randint(0, unknowns)] = random.randint(0, 100)
 
     # observation
-    b = numpy.dot(A, x)
+#    b = numpy.dot(A, x)
 
-    test_orthogonal_matching_pursuit(A, b, max_pursuit_iterations=sparsity)
-    test_matching_pursuit(A, b, max_pursuit_iterations=sparsity)
+#    test_orthogonal_matching_pursuit(A, b, max_pursuit_iterations=sparsity)
+#    test_matching_pursuit(A, b, max_pursuit_iterations=sparsity)
 
+    # homework problem 2
+    rows = 5
+    cols = 10
+    sparseness = 2
+    iters = 10
+    successes = 0
+
+    i = 0
+    while i < iters:
+        A = numpy.random.randn(rows, cols)
+        normalize(A)
+        print()
+        print('Coherence:',coherence(A))
+        true_solution = numpy.zeros(cols)
+        for j in range(sparseness):
+            true_solution[random.randint(0, cols-1)] = random.randint(1, 100)
+        if not sparsity_of_vector(true_solution) == sparseness:
+            continue
+        b = numpy.dot(A, true_solution)
+        sol = orthogonal_matching_pursuit(A, b)
+        print('Sparsity:', sparsity_of_vector(true_solution))
+#        print('True solution:', true_solution)
+#        print('My solution:', sol)
+        if abs(la.norm(sol - true_solution)) < 0.0001:
+            successes += 1
+            print('Success!')
+        else:
+            print('Failure :(')
+        i += 1
+
+    print('\n\nSuccesses out of {0}: {1}'.format(iters, successes))
 
 
 if __name__ == "__main__":
